@@ -6,6 +6,8 @@
 
 import './polyfill.js';
 
+import {randomUUID} from 'node:crypto';
+import express, {type Request, type Response} from 'express';
 import type {Channel} from './browser.js';
 import {ensureBrowserConnected, ensureBrowserLaunched} from './browser.js';
 import {parseArguments} from './cli.js';
@@ -16,6 +18,7 @@ import {Mutex} from './Mutex.js';
 import {
   McpServer,
   StdioServerTransport,
+  StreamableHTTPServerTransport,
   type CallToolResult,
   SetLevelRequestSchema,
 } from './third_party/modelcontextprotocol-sdk/index.js';
@@ -165,7 +168,90 @@ for (const tool of tools) {
   registerTool(tool);
 }
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-logger('Chrome DevTools MCP Server connected');
-logDisclaimers();
+// 根据启动参数选择传输模式
+if (args.httpServer) {
+  // ============ HTTP 模式 ============
+  logger('Starting in HTTP server mode');
+
+  // 创建 Express 应用
+  const app = express();
+
+  app.use(express.json({limit: '4mb'}));
+  app.use(express.urlencoded({extended: true}));
+
+  // CORS 中间件
+  app.use((req, res, next) => {
+    logger(`${req.method} ${req.url}`);
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header(
+      'Access-Control-Allow-Methods',
+      'GET, POST, DELETE, OPTIONS',
+    );
+    res.header(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization, mcp-session-id, mcp-protocol-version',
+    );
+
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(200);
+    } else {
+      next();
+    }
+  });
+
+  // 创建 HTTP 传输层
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+    enableJsonResponse: true,
+    allowedOrigins: ['*'],
+    enableDnsRebindingProtection: false,
+  });
+
+  // 健康检查端点
+  app.get('/health', (req: Request, res: Response) => {
+    res.json({
+      status: 'ok',
+      service: 'Chrome DevTools MCP Server',
+      version: VERSION,
+      mode: 'http',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // 设置 MCP 路由
+  app.post('/mcp', (req: Request, res: Response) => {
+    transport.handleRequest(req, res, req.body);
+  });
+
+  app.get('/mcp', (req: Request, res: Response) => {
+    transport.handleRequest(req, res);
+  });
+
+  app.delete('/mcp', (req: Request, res: Response) => {
+    transport.handleRequest(req, res);
+  });
+
+  // 连接服务器到传输层
+  await server.connect(transport);
+
+  // 启动 HTTP 服务器
+  const PORT = args.port;
+  const HOST = args.host;
+
+  app.listen(PORT, HOST, () => {
+    console.log(
+      `Chrome DevTools MCP Server is running on http://${HOST}:${PORT}`,
+    );
+    console.log(`Health check: http://${HOST}:${PORT}/health`);
+    console.log(`MCP endpoint: http://${HOST}:${PORT}/mcp`);
+    logDisclaimers();
+  });
+} else {
+  // ============ stdio 模式（默认）============
+  logger('Starting in stdio mode');
+
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  logger('Chrome DevTools MCP Server connected');
+  logDisclaimers();
+}

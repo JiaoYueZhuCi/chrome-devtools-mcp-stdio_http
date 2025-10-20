@@ -140,6 +140,23 @@ export const cliOptions = {
     describe:
       'Additional arguments for Chrome. Only applies when Chrome is launched by chrome-devtools-mcp.',
   },
+  httpServer: {
+    type: 'boolean',
+    description: 'Run as HTTP server instead of stdio mode. Enables remote access.',
+    default: false,
+  },
+  port: {
+    type: 'number',
+    description: 'Port to listen on when running in HTTP server mode.',
+    default: 8100,
+    implies: 'httpServer',
+  },
+  host: {
+    type: 'string',
+    description: 'Host to bind to when running in HTTP server mode.',
+    default: '0.0.0.0',
+    implies: 'httpServer',
+  },
 } satisfies Record<string, YargsOptions>;
 
 export function parseArguments(version: string, argv = process.argv) {

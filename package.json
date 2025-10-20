@@ -38,8 +38,10 @@
   "homepage": "https://github.com/ChromeDevTools/chrome-devtools-mcp#readme",
   "mcpName": "io.github.ChromeDevTools/chrome-devtools-mcp",
   "dependencies": {
+    "@types/express": "^5.0.3",
     "core-js": "3.46.0",
     "debug": "4.4.3",
+    "express": "^5.1.0",
     "puppeteer-core": "^24.24.1",
     "yargs": "18.0.0"
   },
